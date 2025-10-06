@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from ..models.message_type import MessageType
 
 
@@ -44,6 +44,7 @@ class Message(MessageBase):
 
 
 class ChatMessage(BaseModel):
+    message_id: int
     room_id: int
     sender: str
     message: Optional[str] = None
@@ -53,6 +54,21 @@ class ChatMessage(BaseModel):
     file_size: Optional[int] = None
     mime_type: Optional[str] = None
     timestamp: datetime
+
+
+class ChatMessageWithReactions(BaseModel):
+    message_id: int
+    room_id: int
+    sender: str
+    message: Optional[str] = None
+    message_type: MessageType = MessageType.TEXT
+    file_url: Optional[str] = None
+    file_name: Optional[str] = None
+    file_size: Optional[int] = None
+    mime_type: Optional[str] = None
+    timestamp: datetime
+    reactions: List[dict] = []  # List of reaction summaries
+    user_reaction: Optional[str] = None  # Current user's reaction
 
 
 class WebSocketMessage(BaseModel):

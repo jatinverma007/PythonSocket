@@ -360,3 +360,4 @@ The application automatically creates tables on startup. For production, conside
 4. Use a reverse proxy (nginx) for production
 5. Enable HTTPS for WebSocket connections
 
+

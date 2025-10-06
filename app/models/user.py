@@ -16,3 +16,4 @@ class User(Base):
 
     # Relationships - using string reference to avoid circular imports
     messages = relationship("Message", back_populates="sender", lazy="dynamic")
+    reactions = relationship("MessageReaction", back_populates="user", lazy="dynamic")

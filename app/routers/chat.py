@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 
 from ..core.database import get_db
-from ..schemas.chat import ChatRoom, ChatRoomCreate, Message, MessageCreate, ChatMessage, FileUploadResponse, ImageUploadResponse
+from ..schemas.chat import ChatRoom, ChatRoomCreate, Message, MessageCreate, ChatMessage, ChatMessageWithReactions, FileUploadResponse, ImageUploadResponse
 from ..models.message_type import MessageType
 from ..schemas.user import User
 from ..services.chat_service import ChatService
@@ -37,9 +37,12 @@ async def get_room(room_id: int, db: Session = Depends(get_db), current_user: Us
     return room
 
 
-@router.get("/messages/{room_id}", response_model=List[ChatMessage])
+@router.get("/messages/{room_id}", response_model=List[ChatMessageWithReactions])
 async def get_messages(room_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from ..services.reaction_service import ReactionService
+    
     chat_service = ChatService(db)
+    reaction_service = ReactionService(db)
     
     # Check if room exists
     room = chat_service.get_room_by_id(room_id)
@@ -47,8 +50,25 @@ async def get_messages(room_id: int, db: Session = Depends(get_db), current_user
         raise HTTPException(status_code=404, detail="Room not found")
     
     messages = chat_service.get_messages_by_room(room_id)
-    return [
-        ChatMessage(
+    result = []
+    
+    for msg in messages:
+        # Get reactions for this message
+        reactions = reaction_service.get_message_reactions(msg.id)
+        user_reaction = reaction_service.get_user_reaction(msg.id, current_user.id)
+        
+        # Convert reactions to dict format
+        reactions_dict = [
+            {
+                "reaction_type": r.reaction_type,
+                "count": r.count,
+                "users": r.users
+            }
+            for r in reactions
+        ]
+        
+        result.append(ChatMessageWithReactions(
+            message_id=msg.id,
             room_id=msg.room_id,
             sender=msg.sender.username,
             message=msg.content,
@@ -57,15 +77,20 @@ async def get_messages(room_id: int, db: Session = Depends(get_db), current_user
             file_name=msg.file_name,
             file_size=msg.file_size,
             mime_type=msg.mime_type,
-            timestamp=msg.timestamp
-        )
-        for msg in messages
-    ]
+            timestamp=msg.timestamp,
+            reactions=reactions_dict,
+            user_reaction=user_reaction
+        ))
+    
+    return result
 
 
-@router.get("/messages/{room_id}/recent", response_model=List[ChatMessage])
+@router.get("/messages/{room_id}/recent", response_model=List[ChatMessageWithReactions])
 async def get_recent_messages(room_id: int, limit: int = 50, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    from ..services.reaction_service import ReactionService
+    
     chat_service = ChatService(db)
+    reaction_service = ReactionService(db)
     
     # Check if room exists
     room = chat_service.get_room_by_id(room_id)
@@ -73,8 +98,25 @@ async def get_recent_messages(room_id: int, limit: int = 50, db: Session = Depen
         raise HTTPException(status_code=404, detail="Room not found")
     
     messages = chat_service.get_recent_messages(room_id, limit)
-    return [
-        ChatMessage(
+    result = []
+    
+    for msg in reversed(messages):  # Reverse to get chronological order
+        # Get reactions for this message
+        reactions = reaction_service.get_message_reactions(msg.id)
+        user_reaction = reaction_service.get_user_reaction(msg.id, current_user.id)
+        
+        # Convert reactions to dict format
+        reactions_dict = [
+            {
+                "reaction_type": r.reaction_type,
+                "count": r.count,
+                "users": r.users
+            }
+            for r in reactions
+        ]
+        
+        result.append(ChatMessageWithReactions(
+            message_id=msg.id,
             room_id=msg.room_id,
             sender=msg.sender.username,
             message=msg.content,
@@ -83,10 +125,12 @@ async def get_recent_messages(room_id: int, limit: int = 50, db: Session = Depen
             file_name=msg.file_name,
             file_size=msg.file_size,
             mime_type=msg.mime_type,
-            timestamp=msg.timestamp
-        )
-        for msg in reversed(messages)  # Reverse to get chronological order
-    ]
+            timestamp=msg.timestamp,
+            reactions=reactions_dict,
+            user_reaction=user_reaction
+        ))
+    
+    return result
 
 
 @router.post("/upload-file", response_model=FileUploadResponse)

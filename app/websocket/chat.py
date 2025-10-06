@@ -281,31 +281,36 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, token: str):
                     saved_message = chat_service.create_message(message_create, user.id)
                     print(f"DEBUG: Message saved successfully: {saved_message.id}")
                     
-                    # Broadcast message to all users in room
-                    chat_message = ChatMessage(
-                        room_id=room_id,
-                        sender=user.username,
-                        message=saved_message.content,
-                        message_type=saved_message.message_type,
-                        file_url=saved_message.file_url,
-                        file_name=saved_message.file_name,
-                        file_size=saved_message.file_size,
-                        mime_type=saved_message.mime_type,
-                        timestamp=saved_message.timestamp
-                    )
+                    # Get reactions for this message (will be empty for new messages)
+                    from ..services.reaction_service import ReactionService
+                    reaction_service = ReactionService(db)
+                    reactions = reaction_service.get_message_reactions(saved_message.id)
+                    
+                    # Convert reactions to dict format
+                    reactions_dict = [
+                        {
+                            "reaction_type": r.reaction_type,
+                            "count": r.count,
+                            "users": r.users
+                        }
+                        for r in reactions
+                    ]
                     
                     # Broadcast message to all users in room
                     broadcast_message = {
                         "type": "message",
                         "room_id": room_id,
-                        "sender": chat_message.sender,
-                        "message": chat_message.message,
-                        "message_type": chat_message.message_type,
-                        "file_url": chat_message.file_url,
-                        "file_name": chat_message.file_name,
-                        "file_size": chat_message.file_size,
-                        "mime_type": chat_message.mime_type,
-                        "timestamp": chat_message.timestamp.isoformat()
+                        "message_id": saved_message.id,
+                        "sender": user.username,
+                        "message": saved_message.content,
+                        "message_type": saved_message.message_type,
+                        "file_url": saved_message.file_url,
+                        "file_name": saved_message.file_name,
+                        "file_size": saved_message.file_size,
+                        "mime_type": saved_message.mime_type,
+                        "timestamp": saved_message.timestamp.isoformat(),
+                        "reactions": reactions_dict,
+                        "user_reaction": None  # New messages don't have user reactions yet
                     }
                     logger.info(f"Broadcasting message: {broadcast_message}")
                     await manager.broadcast_to_room(room_id, broadcast_message, exclude_websocket=websocket)
@@ -319,6 +324,88 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, token: str):
                         "message": f"{user.username} is typing...",
                         "timestamp": datetime.now().isoformat()
                     }, exclude_websocket=websocket)
+                
+                elif message_data.get("type") == "reaction":
+                    # Handle message reaction
+                    print(f"DEBUG: Processing reaction type")
+                    
+                    message_id = message_data.get("message_id")
+                    reaction_type = message_data.get("reaction_type")
+                    action = message_data.get("action", "add")  # "add" or "remove"
+                    
+                    if not message_id or not reaction_type:
+                        await manager.send_personal_message({
+                            "type": "error",
+                            "message": "Missing message_id or reaction_type"
+                        }, websocket)
+                        continue
+                    
+                    try:
+                        from ..services.reaction_service import ReactionService
+                        from ..schemas.reaction import MessageReactionCreate
+                        
+                        reaction_service = ReactionService(db)
+                        
+                        if action == "add":
+                            # Add or update reaction
+                            reaction_data = MessageReactionCreate(
+                                message_id=message_id,
+                                reaction_type=reaction_type
+                            )
+                            reaction = reaction_service.add_reaction(reaction_data, user.id)
+                            reaction_summary = reaction_service.get_message_reactions(message_id)
+                            
+                            # Broadcast reaction to all users in room
+                            await manager.broadcast_to_room(room_id, {
+                                "type": "reaction_added",
+                                "room_id": room_id,
+                                "message_id": message_id,
+                                "sender": user.username,
+                                "reaction_type": reaction_type,
+                                "reaction_summary": [
+                                    {
+                                        "reaction_type": r.reaction_type,
+                                        "count": r.count,
+                                        "users": r.users
+                                    } for r in reaction_summary
+                                ],
+                                "timestamp": datetime.now().isoformat()
+                            })
+                            
+                        elif action == "remove":
+                            # Remove reaction
+                            success = reaction_service.remove_reaction(message_id, user.id)
+                            if success:
+                                reaction_summary = reaction_service.get_message_reactions(message_id)
+                                
+                                # Broadcast reaction removal to all users in room
+                                await manager.broadcast_to_room(room_id, {
+                                    "type": "reaction_removed",
+                                    "room_id": room_id,
+                                    "message_id": message_id,
+                                    "sender": user.username,
+                                    "reaction_type": reaction_type,
+                                    "reaction_summary": [
+                                        {
+                                            "reaction_type": r.reaction_type,
+                                            "count": r.count,
+                                            "users": r.users
+                                        } for r in reaction_summary
+                                    ],
+                                    "timestamp": datetime.now().isoformat()
+                                })
+                            else:
+                                await manager.send_personal_message({
+                                    "type": "error",
+                                    "message": "Reaction not found"
+                                }, websocket)
+                        
+                    except Exception as e:
+                        print(f"DEBUG: Reaction error: {str(e)}")
+                        await manager.send_personal_message({
+                            "type": "error",
+                            "message": f"Failed to process reaction: {str(e)}"
+                        }, websocket)
                 
             except WebSocketDisconnect:
                 break
