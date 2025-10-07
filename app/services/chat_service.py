@@ -1,8 +1,9 @@
 from sqlalchemy.orm import Session
+from sqlalchemy import desc
 from ..models.chat_room import ChatRoom
 from ..models.message import Message
-from ..schemas.chat import ChatRoomCreate, MessageCreate
-from typing import List
+from ..schemas.chat import ChatRoomCreate, MessageCreate, LastMessage
+from typing import List, Dict, Optional, Any
 
 
 class ChatService:
@@ -21,6 +22,37 @@ class ChatService:
 
     def get_all_rooms(self) -> List[ChatRoom]:
         return self.db.query(ChatRoom).order_by(ChatRoom.created_at.desc()).all()
+    
+    def get_all_rooms_with_last_message(self) -> List[Dict[str, Any]]:
+        """Get all rooms with their last message"""
+        rooms = self.db.query(ChatRoom).order_by(ChatRoom.created_at.desc()).all()
+        result = []
+        
+        for room in rooms:
+            # Get the last message for this room
+            last_message_obj = self.db.query(Message).filter(
+                Message.room_id == room.id
+            ).order_by(desc(Message.timestamp)).first()
+            
+            room_dict = {
+                "id": room.id,
+                "name": room.name,
+                "created_at": room.created_at,
+                "last_message": None
+            }
+            
+            if last_message_obj:
+                room_dict["last_message"] = {
+                    "message_id": last_message_obj.id,
+                    "sender": last_message_obj.sender.username,
+                    "message": last_message_obj.content,
+                    "message_type": last_message_obj.message_type,
+                    "timestamp": last_message_obj.timestamp
+                }
+            
+            result.append(room_dict)
+        
+        return result
 
     def create_message(self, message: MessageCreate, sender_id: int) -> Message:
         db_message = Message(

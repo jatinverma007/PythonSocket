@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime
 
 from ..core.database import get_db
-from ..schemas.chat import ChatRoom, ChatRoomCreate, Message, MessageCreate, ChatMessage, ChatMessageWithReactions, FileUploadResponse, ImageUploadResponse
+from ..schemas.chat import ChatRoom, ChatRoomCreate, Message, MessageCreate, ChatMessage, ChatMessageWithReactions, FileUploadResponse, ImageUploadResponse, ChatRoomWithLastMessage
 from ..models.message_type import MessageType
 from ..schemas.user import User
 from ..services.chat_service import ChatService
@@ -16,10 +16,10 @@ from .auth import get_current_user
 router = APIRouter(prefix="/api", tags=["chat"])
 
 
-@router.get("/rooms", response_model=List[ChatRoom])
+@router.get("/rooms", response_model=List[ChatRoomWithLastMessage])
 async def get_rooms(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     chat_service = ChatService(db)
-    return chat_service.get_all_rooms()
+    return chat_service.get_all_rooms_with_last_message()
 
 
 @router.post("/rooms", response_model=ChatRoom)

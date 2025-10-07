@@ -44,8 +44,39 @@ async def root():
     }
 
 
-@app.websocket("/ws/chat/{room_id}")
-async def websocket_route(websocket: WebSocket, room_id: int, token: str = Query(...)):
+@app.websocket("/ws/chat/{room_identifier}")
+async def websocket_route(websocket: WebSocket, room_identifier: str, token: str = Query(...)):
+    """WebSocket endpoint that accepts either room_id (int) or room_name (str)"""
+    from .core.database import get_db
+    from .services.chat_service import ChatService
+    
+    # Determine if room_identifier is an ID or a name
+    room_id = None
+    
+    # Try to parse as integer first
+    try:
+        room_id = int(room_identifier)
+    except ValueError:
+        # It's a room name, look it up
+        db = next(get_db())
+        try:
+            chat_service = ChatService(db)
+            rooms = chat_service.get_all_rooms()
+            
+            # Find room by name (case-insensitive)
+            room_name_lower = room_identifier.lower()
+            for room in rooms:
+                if room.name.lower() == room_name_lower:
+                    room_id = room.id
+                    break
+            
+            if room_id is None:
+                # Room not found
+                await websocket.close(code=1008, reason=f"Room '{room_identifier}' not found")
+                return
+        finally:
+            db.close()
+    
     await websocket_endpoint(websocket, room_id, token)
 
 

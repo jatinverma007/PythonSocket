@@ -361,3 +361,5 @@ The application automatically creates tables on startup. For production, conside
 5. Enable HTTPS for WebSocket connections
 
 
+
+

@@ -701,3 +701,5 @@ curl -X GET "http://192.168.29.247:8000/api/reactions/message/1" \
 
 The backend is now ready to handle reactions. The iOS implementation provides a complete WhatsApp-style reaction system with real-time updates via WebSocket.
 
+
+

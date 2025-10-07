@@ -20,6 +20,23 @@ class ChatRoom(ChatRoomBase):
         from_attributes = True
 
 
+class LastMessage(BaseModel):
+    message_id: int
+    sender: str
+    message: Optional[str] = None
+    message_type: MessageType = MessageType.TEXT
+    timestamp: datetime
+
+
+class ChatRoomWithLastMessage(ChatRoomBase):
+    id: int
+    created_at: datetime
+    last_message: Optional[LastMessage] = None
+
+    class Config:
+        from_attributes = True
+
+
 class MessageBase(BaseModel):
     content: Optional[str] = None
     message_type: MessageType = MessageType.TEXT
