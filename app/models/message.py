@@ -25,4 +25,5 @@ class Message(Base):
     room = relationship("ChatRoom", back_populates="messages")
     sender = relationship("User", back_populates="messages")
     reactions = relationship("MessageReaction", back_populates="message", cascade="all, delete-orphan")
+    reads = relationship("MessageRead", back_populates="message", cascade="all, delete-orphan")
 

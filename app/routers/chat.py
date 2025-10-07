@@ -19,7 +19,7 @@ router = APIRouter(prefix="/api", tags=["chat"])
 @router.get("/rooms", response_model=List[ChatRoomWithLastMessage])
 async def get_rooms(db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
     chat_service = ChatService(db)
-    return chat_service.get_all_rooms_with_last_message()
+    return chat_service.get_all_rooms_with_last_message(user_id=current_user.id)
 
 
 @router.post("/rooms", response_model=ChatRoom)
@@ -230,4 +230,23 @@ async def get_image(filename: str):
         raise HTTPException(status_code=404, detail="Image not found")
     
     return FileResponse(file_path)
+
+
+@router.post("/rooms/{room_id}/mark-read")
+async def mark_room_as_read(room_id: int, db: Session = Depends(get_db), current_user: User = Depends(get_current_user)):
+    """Mark all messages in a room as read for the current user"""
+    chat_service = ChatService(db)
+    
+    # Check if room exists
+    room = chat_service.get_room_by_id(room_id)
+    if not room:
+        raise HTTPException(status_code=404, detail="Room not found")
+    
+    # Mark all messages as read
+    read_count = chat_service.mark_messages_as_read(room_id, current_user.id)
+    
+    return {
+        "message": f"Marked {read_count} messages as read",
+        "read_count": read_count
+    }
 

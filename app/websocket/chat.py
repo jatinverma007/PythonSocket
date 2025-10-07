@@ -190,6 +190,11 @@ async def websocket_endpoint(websocket: WebSocket, room_id: int, token: str):
         
         logger.info(f"Room found: {room.name}")
         
+        # Mark all messages in this room as read for the user
+        logger.info("Marking messages as read")
+        read_count = chat_service.mark_messages_as_read(room_id, user.id)
+        logger.info(f"Marked {read_count} messages as read")
+        
         # Send welcome message
         logger.info("Sending welcome message")
         await manager.send_personal_message({

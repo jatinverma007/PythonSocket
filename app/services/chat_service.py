@@ -1,9 +1,11 @@
 from sqlalchemy.orm import Session
-from sqlalchemy import desc
+from sqlalchemy import desc, and_, func
 from ..models.chat_room import ChatRoom
 from ..models.message import Message
+from ..models.message_read import MessageRead
 from ..schemas.chat import ChatRoomCreate, MessageCreate, LastMessage
 from typing import List, Dict, Optional, Any
+from datetime import datetime
 
 
 class ChatService:
@@ -23,8 +25,8 @@ class ChatService:
     def get_all_rooms(self) -> List[ChatRoom]:
         return self.db.query(ChatRoom).order_by(ChatRoom.created_at.desc()).all()
     
-    def get_all_rooms_with_last_message(self) -> List[Dict[str, Any]]:
-        """Get all rooms with their last message"""
+    def get_all_rooms_with_last_message(self, user_id: int = None) -> List[Dict[str, Any]]:
+        """Get all rooms with their last message and unread count"""
         rooms = self.db.query(ChatRoom).order_by(ChatRoom.created_at.desc()).all()
         result = []
         
@@ -38,7 +40,8 @@ class ChatService:
                 "id": room.id,
                 "name": room.name,
                 "created_at": room.created_at,
-                "last_message": None
+                "last_message": None,
+                "unread_count": 0
             }
             
             if last_message_obj:
@@ -49,6 +52,10 @@ class ChatService:
                     "message_type": last_message_obj.message_type,
                     "timestamp": last_message_obj.timestamp
                 }
+            
+            # Get unread count for this room if user_id is provided
+            if user_id:
+                room_dict["unread_count"] = self.get_unread_count(room.id, user_id)
             
             result.append(room_dict)
         
@@ -75,4 +82,79 @@ class ChatService:
 
     def get_recent_messages(self, room_id: int, limit: int = 50) -> List[Message]:
         return self.db.query(Message).filter(Message.room_id == room_id).order_by(Message.timestamp.desc()).limit(limit).all()
+    
+    def get_unread_count(self, room_id: int, user_id: int) -> int:
+        """Get count of unread messages in a room for a specific user"""
+        # Get all messages in the room that are not sent by the user
+        # and that haven't been read by the user
+        unread_count = self.db.query(Message).filter(
+            and_(
+                Message.room_id == room_id,
+                Message.sender_id != user_id,  # Exclude user's own messages
+                ~Message.id.in_(  # Messages not in the read list
+                    self.db.query(MessageRead.message_id).filter(
+                        MessageRead.user_id == user_id
+                    )
+                )
+            )
+        ).count()
+        
+        return unread_count
+    
+    def mark_messages_as_read(self, room_id: int, user_id: int) -> int:
+        """Mark all unread messages in a room as read for a specific user"""
+        # Get all messages in the room that haven't been read by this user
+        unread_messages = self.db.query(Message).filter(
+            and_(
+                Message.room_id == room_id,
+                Message.sender_id != user_id,  # Exclude user's own messages
+                ~Message.id.in_(
+                    self.db.query(MessageRead.message_id).filter(
+                        MessageRead.user_id == user_id
+                    )
+                )
+            )
+        ).all()
+        
+        # Create read records for all unread messages
+        read_count = 0
+        for message in unread_messages:
+            message_read = MessageRead(
+                message_id=message.id,
+                user_id=user_id,
+                read_at=datetime.utcnow()
+            )
+            self.db.add(message_read)
+            read_count += 1
+        
+        self.db.commit()
+        return read_count
+    
+    def mark_message_as_read(self, message_id: int, user_id: int) -> bool:
+        """Mark a specific message as read for a user"""
+        # Check if already marked as read
+        existing_read = self.db.query(MessageRead).filter(
+            and_(
+                MessageRead.message_id == message_id,
+                MessageRead.user_id == user_id
+            )
+        ).first()
+        
+        if existing_read:
+            return False  # Already marked as read
+        
+        # Check if message exists and user is not the sender
+        message = self.db.query(Message).filter(Message.id == message_id).first()
+        if not message or message.sender_id == user_id:
+            return False
+        
+        # Create read record
+        message_read = MessageRead(
+            message_id=message_id,
+            user_id=user_id,
+            read_at=datetime.utcnow()
+        )
+        self.db.add(message_read)
+        self.db.commit()
+        return True
 

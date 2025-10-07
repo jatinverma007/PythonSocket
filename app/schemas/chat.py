@@ -32,6 +32,7 @@ class ChatRoomWithLastMessage(ChatRoomBase):
     id: int
     created_at: datetime
     last_message: Optional[LastMessage] = None
+    unread_count: int = 0
 
     class Config:
         from_attributes = True

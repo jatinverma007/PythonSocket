@@ -7,7 +7,7 @@ from .core.database import engine, Base
 from .core.config import settings
 from .routers import auth, chat, reactions
 from .websocket.chat import websocket_endpoint
-from .models import User, ChatRoom, Message  # Import all models
+from .models import User, ChatRoom, Message, MessageRead  # Import all models
 
 # Create database tables
 Base.metadata.create_all(bind=engine)
